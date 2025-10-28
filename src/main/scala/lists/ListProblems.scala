@@ -162,11 +162,11 @@ object RList {
   def from[T](iterable: Iterable[T]): RList[T] = {
     @tailrec
     def fromHelper(remaining: Iterable[T], result: RList[T]): RList[T] =
-      if remaining.isEmpty then result
+      if remaining.isEmpty then result.reverse
       else
         fromHelper(remaining.tail, remaining.head :: result)
 
-    fromHelper(iterable, RNil).reverse
+    fromHelper(iterable, RNil)
   }
 }
 

@@ -1,7 +1,10 @@
 package lists
 
+import lists.EList.{flatten, mergeSortedLists, partition}
+
 import scala.annotation.tailrec
 import scala.util.Random
+import math.{E, Ordering}
 
 /**
  * Same as ListProblems, but using Scala 3's enum for sum type instead of a sealed abstract class.
@@ -131,11 +134,11 @@ enum EList[+T] {
   }
 
   //--------------------------------------------------------------------------------------
-  def flatMap[U](f: T => EList[U]): EList[U] = EList.flatten(this.map(f))
+  def flatMap[U](f: T => EList[U]): EList[U] = flatten(this.map(f))
 
   //--------------------------------------------------------------------------------------  
   // Tail recursive, but has poor performance, as it does ++ at each step. Complexity is O(N^2)
-  def flatMap_v2[U](f: T => EList[U]): EList[U] = this match {
+  def flatMapInefficient[U](f: T => EList[U]): EList[U] = this match {
     case Empty()        => Empty()
     case ::(head, tail) =>
       @tailrec
@@ -309,7 +312,187 @@ enum EList[+T] {
   }
 
   //--------------------------------------------------------------------------------------
-  def mergeSort[S >: T](ordering: Ordering[S]): EList[S] = ???
+  def mergeSort[S >: T](ordering: Ordering[S]): EList[S] = this match {
+    case Empty() => Empty()
+    case head :: Empty() => head :: Empty() // single element
+    case nonEmptyList =>
+
+      @tailrec  // merge two sorted lists into a single sorted list
+      def merge(leftRem: EList[S], rightRem: EList[S], acc: EList[S]): EList[S] =
+        (leftRem, rightRem) match {
+          case (Empty(), Empty()) => acc.reverse
+          case (Empty(), right) => acc.reverse ++ right
+          case (left, Empty()) => acc.reverse ++ left
+          case (x :: xs, y :: ys) =>
+            ordering.compare(x, y) match {
+              case n if n < 0 => merge(xs, y :: ys, x :: acc)
+              case 0          => merge(xs, ys, x :: y :: acc)
+              case _          => merge(x :: xs, ys, y :: acc)
+            }
+        }
+
+      /*
+        [3,1,2,5,4] = [[3],[1],[2],[5],[4]]
+        msh([[3],[1],[2],[5],[4]], [])      // case E
+        = msh([[2],[5],[4]], [[1,3]])       // case E
+        = msh([[4]], [[2,5], [1,3]])        // case D
+        = msh([], [[4], [2,5], [1,3]])      // case C: swap bigLists and smallLists, since smallList is empty
+        = msh([[4], [2,5], [1,3]], [])      // case E
+        = msh([[1,3]], [[2,4,5]])           // case D without swap
+        = msh([], [[1,3], [2,4,5]])         // case C: time to swap
+        = msh([[1,3], [2,4,5]], [])         // case E
+        = msh([], [[1,2,3,4,5]])            // case B
+        = [1,2,3,4,5]
+
+        Complexity: O(n * log n)
+        Equation: complexity(n) = 2 * complexity(n/2) + n
+        In the equation, the "+ n" is the complexity of the merge.
+       */
+      @tailrec
+      def mergeSortHelper(smallLists: EList[EList[S]], bigLists: EList[EList[S]]): EList[S] =
+        smallLists match {
+          case Empty() => // If bigLists contains just one list then return it else swap lists
+            bigLists match {
+              case Empty()          => Empty()  // case A
+              case head :: Empty()  => head     // case B: return the sole nested list
+              case _                => mergeSortHelper(bigLists, Empty()) // case C: swap big and small lists
+            }
+
+          // case D: smallList has just one element, so prepend it to bigLists and swap bigList and smallList
+          case head :: Empty() => mergeSortHelper(head :: bigLists, Empty())
+
+          // case E: smallList has at least 2 elements
+          case h1 :: h2 :: tail =>
+            val newBigLists = merge(h1, h2, Empty()) :: bigLists
+            mergeSortHelper(tail, newBigLists)
+        }
+
+      mergeSortHelper(this.wrap, Empty())
+  }
+
+  //=======================================================================================
+  // QUICK SORT
+
+  // Stack recursive version
+  def quickSortSR[S >: T](ordering: Ordering[S]): EList[S] = this match {
+    case Empty() => Empty()
+    case pivot :: tail =>
+      val (lesser, greater) = partition(tail, pivot, ordering)
+      lesser.quickSortSR(ordering) ++ (pivot :: Empty()) ++ greater.quickSortSR(ordering)
+  }
+
+  //--------------------------------------------------------------------------------------
+  // Tail recursive version
+  def quickSort[S >: T](ordering: Ordering[S]): EList[S] = this match {
+    case Empty() => Empty()
+    case list =>
+      /*
+        [4,3,2,7,5,0,1].quickSort
+        = qsh([[4,3,2,7,5,0,1]], [])
+        = qsh([[3,2,0,1], [4], [7,5]], [])
+        = qsh([[2,0,1], [3], [], [4], [7,5]], [])
+        = qsh([[0,1], [2], [3], [], [4], [7,5]], [])
+        = qsh([[0], [1], [2], [3], [], [4], [7,5]], [])
+        = qsh([[7,5]], [[4], [3], [2], [1], [0]])    // takes several steps to get to this point
+        = qsh([[5], [7]], [[4], [3], [2], [1], [0]])
+        = qsh([], [[7], [5], [4], [3], [2], [1], [0]])
+        = [0,1,2,3,4,5,7]
+       */
+      @tailrec
+      def quickSortHelper(remaining: EList[EList[S]], acc: EList[EList[S]]): EList[S] = remaining match {
+        case Empty() => acc match {
+          case Empty()  => Empty()    // case 1
+          case nested   => nested.flatMap(identity).reverse // case 2
+        }
+        case xs :: xss =>
+          xs match {
+            // nested list is empty, so remove it. Example: [[], [5], [7], [8,9]]
+            case Empty() => quickSortHelper(xss, acc) // case 3
+
+            // nested list has a single element
+            // example: [[5], [7], [8,9]]. Here xs = [5], xss = [[7], [8,9]], x = 7
+            case x :: Empty() => quickSortHelper(xss, xs :: acc)  // case 4
+
+            // nested list has multiple elements. example: [[3,2,0,1], [4], [7,5]]
+            case pivot :: ys => // pivot = 3 in this example - case 5
+              val (smaller, greater) = partition(ys, pivot, ordering)
+              val newRemaining = smaller :: (pivot :: Empty()) :: greater :: xss
+              quickSortHelper(newRemaining, acc)
+        }
+      }
+      val listOfList = list :: Empty()
+      quickSortHelper(listOfList, Empty())
+  }
+
+  //--------------------------------------------------------------------------------------
+  // Tail recursive version optimized for lists containing duplicates
+  def quickSortOptimized[S >: T](ordering: Ordering[S]): EList[S] = this match {
+    case Empty() => Empty()
+    case list =>
+      /*
+       Splits list into two based on the pivot but excludes the pivot from both lists.
+       Instead also returns the number of times the pivot occurs in the list.
+       Example: partition([4,3,5,2,3,0,1], 3, [], []) = (2, [2,0,1], [4,5])
+      */
+      @tailrec
+      def partitionThreeWay(list: EList[S], pivot: S, pivotCount: Int,
+                    smaller: EList[S], larger: EList[S]): (Int, EList[S], EList[S]) = list match {
+        case Empty() => (pivotCount, smaller, larger)
+        case head :: tail =>
+          ordering.compare(head, pivot) match {
+            case n if n < 0 =>  partitionThreeWay(tail, pivot, pivotCount, head :: smaller, larger)
+            case n if n == 0 => partitionThreeWay(tail, pivot, pivotCount + 1, smaller, larger) // increase pivot count
+            case _ =>           partitionThreeWay(tail, pivot, pivotCount, smaller, head :: larger)
+          }
+      }
+
+      /*
+        Prepends a singleton list containing 'pivot', a 'pivotCount' number of times to the given list
+        Example: prependPivots([[7,5]], 10, 3) = [[10], [10], [10], [7,5]]
+       */
+      @tailrec
+      def prependPivots(list: EList[EList[S]], pivot: S, pivotCount: Int): EList[EList[S]] = pivotCount match {
+        case n if n <= 0 => list
+        case _ =>
+          val newList = (pivot :: Empty()) :: list
+          prependPivots(newList, pivot, pivotCount - 1)
+      }
+
+      @tailrec
+      def quickSortHelper(remaining: EList[EList[S]], acc: EList[EList[S]]): EList[S] = remaining match {
+        case Empty() => acc match {
+          case Empty()  => Empty()                            // case 1
+          case nested   => nested.flatMap(identity).reverse   // case 2. flatten the list and reverse it
+        }
+        case headList :: tailList =>
+          headList match {
+            // nested list is empty, so remove it. Example: [[], [5], [7], [8,9]]
+            case Empty() => quickSortHelper(tailList, acc) // case 3
+
+            // nested list has a single element
+            // example: [[5], [7], [8,9]]. Here headList = [5], tailList = [[7], [8,9]], x = 7
+            case x :: Empty() => quickSortHelper(tailList, headList :: acc) // case 4
+
+            // nested list has multiple elements. example: [[3,2,0,1], [4], [7,5]]
+            case pivot :: tail => // pivot = 3 in this example - case 5
+              val (pivotCount, smaller, greater) = partitionThreeWay(tail, pivot, 1, Empty(), Empty())
+              val newRemaining = smaller :: prependPivots(greater :: tailList, pivot, pivotCount)
+              quickSortHelper(newRemaining, acc)
+          }
+      }
+
+      val listOfList = list :: Empty()
+      quickSortHelper(listOfList, Empty())
+  }
+
+  //--------------------------------------------------------------------------------------
+  // Wraps each element into an EList
+  def wrapSR: EList[EList[T]] = this match {
+    case Empty() => Empty()
+    case x :: xs => (x :: Empty()) :: xs.wrapSR
+  }
+
+  def wrap: EList[EList[T]] = this map (_ :: Empty())
 
   //--------------------------------------------------------------------------------------
   // FOLDS
@@ -330,7 +513,7 @@ enum EList[+T] {
 
 } // EList
 
-//---------------------------------------------------------------------------------------------------------------------
+//=============================================================================================================
 // companion object
 object EList {
   def from[T](iterable: Iterable[T]): EList[T] = {
@@ -361,6 +544,40 @@ object EList {
           flattenHelper(tail, newAcc)
       }
       flattenHelper(nested, Empty())
+  }
+
+  //--------------------------------------------------------------------------------------
+  // Moved it as a nested method for mergeSort algorithm later. Placed it here at the beginning just for testing.
+  @tailrec
+  def mergeSortedLists[T](ordering: Ordering[T], leftRem: EList[T], rightRem: EList[T], acc: EList[T]): EList[T] =
+    (leftRem, rightRem) match {
+      case (Empty(), Empty()) => acc.reverse
+      case (Empty(), r)       => acc.reverse ++ r
+      case (l, Empty())       => acc.reverse ++ l
+      case (x :: xs, y :: ys) =>
+        ordering.compare(x, y) match {
+          case n if n < 0 => mergeSortedLists(ordering, xs, y :: ys, x :: acc)
+          case 0          => mergeSortedLists(ordering, xs, ys, x :: y :: acc)
+          case _          => mergeSortedLists(ordering, x :: xs, ys, y :: acc)
+        }
+    }
+
+  //--------------------------------------------------------------------------------------
+  /*
+    Splits list into a two-way partition based on the pivot.
+    partition([4,3,5,2,0,1], 3, [], []) = ([1,0,2,3], [5,4])
+  */
+  def partition[T](list: EList[T], pivot: T, ordering: Ordering[T]): (EList[T], EList[T]) = {
+    @tailrec
+    def partitionHelper(list: EList[T], smaller: EList[T], larger: EList[T]): (EList[T], EList[T]) = list match {
+      case Empty() => (smaller, larger)
+      case head :: tail =>
+        if ordering.lteq(head, pivot) then
+          partitionHelper(tail, head :: smaller, larger)
+        else
+          partitionHelper(tail, smaller, head :: larger)
+    }
+    partitionHelper(list, Empty(), Empty())
   }
 }
 
@@ -412,7 +629,7 @@ object ListProblemsTest extends App {
     println((aList ++ bList).filter(_ % 2 != 0)) // [7, 9, 3, 5]
 
     // test flatMap
-    println(aList.flatMap_v2(x => x :: -x :: 2 * x :: Empty())) // [7, -7, 14, 8, -8, 16, 9, -9, 18, 10, -10, 20]
+    println(aList.flatMapInefficient(x => x :: -x :: 2 * x :: Empty())) // [7, -7, 14, 8, -8, 16, 9, -9, 18, 10, -10, 20]
     println(aList.flatMap(x => x :: -x :: 2 * x :: Empty()))    // [7, -7, 14, 8, -8, 16, 9, -9, 18, 10, -10, 20]
   }
 
@@ -429,7 +646,8 @@ object ListProblemsTest extends App {
       :: Empty()
 
   val aLargeList = EList.from(1 to 10000)
-  
+  val listToSort = aLargeList.randomSample(10)
+
   //------------------------------------------------------
   def testMediumDifficultyProblems() = {
     
@@ -466,18 +684,80 @@ object ListProblemsTest extends App {
   }
 
   //------------------------------------------------------
+
+  val jumbledList = 3 :: 2 :: 1 :: 6 :: 5 :: 4 :: 0 :: Empty()
+  val ordering = Ordering.fromLessThan[Int](_ < _)
+  println(jumbledList.insertionSort(ordering))
+  println(jumbledList.mergeSort(ordering)) // raises an exception!
+
+  val list2 = 9 :: 8 :: 7 :: 6 :: Empty()
+  println(list2.insertionSort((x, y) => x - y)) // [6, 7, 8, 9]
+
+  val odds  = 1 :: 3 :: 5 :: 7 :: Empty()
+  val evens = 2 :: 4 :: 6 :: Empty()
+  val before = 0 :: 1 :: Empty()
+  val after = 8 :: 9 :: Empty()
+
+  val singletonList = 5 :: Empty()
+
+  //---------------------------------------------------------------------
   def testDifficultProblems(): Unit = {
 
-    val jumbledList = 3 :: 2 :: 1 :: 6 :: 5 :: 4 :: 0 :: Empty()
-    val ordering = Ordering.fromLessThan[Int](_ < _)
-    println(jumbledList.insertionSort(ordering))
+    // test merge sorted lists
+    println(EList.mergeSortedLists(ordering, odds, evens, Empty()))   // [1, 2, 3, 4, 5, 6, 7]
+    println(EList.mergeSortedLists(ordering, before, evens, Empty())) // [0, 1, 2, 4, 6]
+    println(EList.mergeSortedLists(ordering, evens, after, Empty()))  // [2, 4, 6, 8, 9]
 
-    val list2 = 9 :: 8 :: 7 :: 6 :: Empty()
-    println(list2.insertionSort((x, y) => x - y)) // [6, 7, 8, 9]
+    println(EList.mergeSortedLists(ordering, Empty(), evens, Empty()))  // [2, 4, 6]
+    println(EList.mergeSortedLists(ordering, odds, Empty(), Empty()))   // [1, 3, 5, 7]
 
-    val randomList = aLargeList.randomSample(10)
-    println(randomList)
-    println(randomList.insertionSort(ordering))
+    // test wrapping each element of a list into a list
+    println(evens.wrapSR) // [[2], [4], [6]]
+    println(after.wrap)   // [[8], [9]]
+
+    // test merge sort
+    println(jumbledList.mergeSort(ordering))  // [0, 1, 2, 3, 4, 5, 6]
+    println(Empty().mergeSort(ordering))      // []
+    println(listToSort.mergeSort(ordering))   // random list should appear sorted
+
+    // edge case for merge sort: singleton list
+    println(singletonList.mergeSort(ordering))  // [5]
+
+    // ------------- Quick Sort --------------------
+    // Stack-recursive, tail-recursive and optimized versions
+
+    println(jumbledList.quickSortSR(ordering))        // [0, 1, 2, 3, 4, 5, 6]
+    println(jumbledList.quickSort(ordering))          // [0, 1, 2, 3, 4, 5, 6]
+    println(jumbledList.quickSortOptimized(ordering)) // [0, 1, 2, 3, 4, 5, 6]
+
+    println(listToSort.quickSortSR(ordering))
+    println(listToSort.quickSort(ordering))
+    println(listToSort.quickSortOptimized(ordering))
+
+    println(singletonList.quickSortSR(ordering))          // [5]
+    println(singletonList.quickSort(ordering))            // [5]
+    println(singletonList.quickSortOptimized(ordering))   // [5]
+
+    val doubleList = 2 :: 1 :: Empty()
+    // test list partitioning
+    val (small, large) = partition(doubleList, 2, ordering)
+    println(s"smaller = $small, larger = $large") // smaller = [1,2], larger = []
+
+    // List with 2 elements
+    println(doubleList quickSortSR ordering) // [1, 2]
+    println(doubleList quickSort ordering) // [1, 2]
+    println(doubleList quickSortOptimized ordering) // [1, 2]
+
+    // List with duplicates
+    val listWithDuplicates = 3 :: 1 :: 3 :: 2 :: 1 :: Empty()
+    println(listWithDuplicates quickSortSR ordering)          // [1, 1, 2, 3, 3]
+    println(listWithDuplicates quickSort ordering)            // [1, 1, 2, 3, 3]
+    println(listWithDuplicates quickSortOptimized ordering)   // [1, 1, 2, 3, 3]
+
+    // Empty list
+    println(Empty() quickSortSR ordering)         // []
+    println(Empty() quickSort ordering)           // []
+    println(Empty() quickSortOptimized ordering)  // []
   }
 
   //------------------------------------------------------

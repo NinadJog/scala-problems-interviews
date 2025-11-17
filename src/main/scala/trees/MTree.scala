@@ -25,33 +25,34 @@ enum MTree[A] {
     case Node(l, r)   => Node(l mapSR f, r mapSR f)
   }
 
-  def fold[B](f1: A => B, f2: (B, B) => B): B = this match {
-    case Leaf(value)        => f1(value)
-    case Node(left, right)  => f2(left.fold(f1, f2), right.fold(f1, f2))
+  def fold[B](leaf: A => B)(node: (B, B) => B): B = this match {
+    case Leaf(value)        => leaf(value)
+    case Node(left, right)  => node(left.fold(leaf)(node), right.fold(leaf)(node))
   }
 
   // Implementations using fold
-  def sizeF: Int                  = fold(_ => 1, _ + _)
-  def containsF(elem: A): Boolean = fold(elem == _, _ || _)
+  def sizeF: Int                    = fold(_ => 1)(_ + _)
+  def containsF(elem: A): Boolean   = fold(elem == _)(_ || _)
+  def mapF[B](f: A => B): MTree[B]  = fold { v => Leaf(f(v)) }{ (l, r) => Node(l, r) }
 
-  /* Fold functions construction
+  /* Fold function construction
 
     // Skeleton
     def fold[B](): B = this match {
       case Leaf(value)        => ???
-      case Node(left, right)  => l.fold ??? r.fold
+      case Node(left, right)  => left.fold ??? right.fold
     }
 
     // Add parameter for Leaf
-    def fold[B](f1: A => B): B = this match {
-      case Leaf(value)        => f1(value)
-      case Node(left, right)  => l.fold(f1) ??? r.fold(f1)
+    def fold[B](leaf: A => B): B = this match {
+      case Leaf(value)        => leaf(value)
+      case Node(left, right)  => left.fold(f1) ??? right.fold(f1)
     }
 
     // Add parameter for Node
-    def fold[B](f1: A => B, f2: (B, B) => B): B = this match {
-      case Leaf(value)        => f1(value)
-      case Node(left, right)  => f2(left.fold(f1, f2), right.fold(f1, f2))
+    def fold[B](leaf: A => B, node: (B, B) => B): B = this match {
+      case Leaf(value)        => leaf(value)
+      case Node(left, right)  => node(left.fold(leaf)(node), right.fold(leaf)(node))
     }
    */
 }

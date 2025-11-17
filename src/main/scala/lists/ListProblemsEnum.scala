@@ -1,14 +1,13 @@
 package lists
 
-import lists.EList.{flatten, mergeSortedLists, partition}
-
+import lists.EList.{flatten, partition}
 import scala.annotation.tailrec
+import scala.math.Ordering
 import scala.util.Random
-import math.{E, Ordering}
 
 /**
  * Same as ListProblems, but using Scala 3's enum for sum type instead of a sealed abstract class.
- * The 'E' in EList stands for enum. I have also added leftFold and rightFold and implemented many of the
+ * The 'E' in EList stands for enum. I have also added leftFold and rightFold and implemented some of the
  * problems using folds.
 */
 

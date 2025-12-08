@@ -26,14 +26,14 @@ enum MList[A] {
 
   // stack -recursive version of contains
   def containsSR(elem: A): Boolean = this match {
-    case Empty()        => false
-    case ::(head, tail) => (head == elem) || (tail containsSR elem)
+    case Empty()      => false
+    case head :: tail => (head == elem) || (tail containsSR elem)
   }
 
   // stack-recursive version of map
   def mapSR[B](f: A => B): MList[B] = this match {
-    case Empty()        => Empty()
-    case ::(head, tail) => f(head) :: (tail mapSR f)
+    case Empty()      => Empty()
+    case head :: tail => f(head) :: (tail mapSR f)
   }
 
   @tailrec
@@ -96,6 +96,7 @@ object MListTest {
     println(aList.containsFL(7))  // true
     println(aList.containsFL(1))  // false
 
+    println(aList.mapFL(x => s"${2 * x}"))  // ["14","16","18"]
     println(aList.mapFR(x => s"${2 * x}"))  // ["14","16","18"]
   }
 }

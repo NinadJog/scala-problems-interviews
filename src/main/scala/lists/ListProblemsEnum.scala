@@ -15,22 +15,22 @@ enum EList[+T] {
   case Empty()
   case ::(head: T, tail: EList[T])
 
-  def headOption: Option[T] = this match {
-    case Empty() => None
-    case ::(head, _) => Some(head)
-  }
-
   // Cons operator to prepend an element to the list
   def ::[S >: T](elem: S): EList[S] = new ::(elem, this)
 
+  def headOption: Option[T] = this match {
+    case Empty() => None
+    case head :: _ => Some(head)
+  }
+
   //--------------------------------------------------------------------------------------
   override def toString: String = this match {
-    case Empty() => "[]"
-    case ::(head, tail) =>
+    case Empty()      => "[]"
+    case head :: tail =>
       @tailrec
       def toStringHelper(remaining: EList[T], acc: String): String = remaining match {
-        case Empty()        => acc
-        case ::(head, tail) => toStringHelper(tail, s"$acc, $head")
+        case Empty()      => acc
+        case head :: tail => toStringHelper(tail, s"$acc, $head")
       }
       "[" + toStringHelper(tail, s"$head") + "]"
   }
@@ -40,8 +40,8 @@ enum EList[+T] {
   def apply(index: Int): T = {
     @tailrec
     def applyHelper(remaining: EList[T], curIndex: Int): T = remaining match {
-      case Empty()        => throw new NoSuchElementException()
-      case ::(head, tail) =>
+      case Empty()      => throw new NoSuchElementException()
+      case head :: tail =>
         if curIndex == index then head  // return the element at the index
         else applyHelper(tail, curIndex + 1)
     }
@@ -52,11 +52,21 @@ enum EList[+T] {
   }
 
   //--------------------------------------------------------------------------------------
+  // LENGTH
+  // Naturally recursive version of length. Not stack-safe
+  def lengthSR: Int = this match {
+    case Empty() => 0
+    case _ :: tail => 1 + tail.lengthSR
+  }
+
+  // Implementing length with the foldLeft function
+  def lengthFold: Int = foldLeft(0)((_, acc) => 1 + acc)
+
   def length: Int = {
     @tailrec
     def lengthHelper(remaining: EList[T], curLength: Int): Int = remaining match {
-      case Empty()      => curLength
-      case ::(_, tail)  => lengthHelper(tail, 1 + curLength)
+      case Empty()    => curLength
+      case _ :: tail  => lengthHelper(tail, 1 + curLength)
     }
     lengthHelper(this, 0)
   }
@@ -65,8 +75,8 @@ enum EList[+T] {
   def reverse: EList[T] = {
     @tailrec
     def reverseHelper(remaining: EList[T], acc: EList[T]): EList[T] = remaining match {
-      case Empty()        => acc
-      case ::(head, tail) => reverseHelper(tail, head :: acc)
+      case Empty()      => acc
+      case head :: tail => reverseHelper(tail, head :: acc)
     }
     reverseHelper(this, Empty())
   }
@@ -74,11 +84,11 @@ enum EList[+T] {
   //--------------------------------------------------------------------------------------
   def ++[S >: T](other: EList[S]): EList[S] = this match {
     case Empty() => other
-    case ::(head, tail) =>
+    case head :: tail =>
       @tailrec // implementation identical to reverseHelper
       def concatHelper(remaining: EList[T], acc: EList[S]): EList[S] = remaining match {
-        case Empty()        => acc
-        case ::(head, tail) => concatHelper(tail, head :: acc)
+        case Empty()      => acc
+        case head :: tail => concatHelper(tail, head :: acc)
       }
       concatHelper(this.reverse, other)
   }
@@ -88,44 +98,44 @@ enum EList[+T] {
    * Removes the element from the given index. If the index is out of bounds, return the
    * list unaltered.
    */
-  def removeAt[S >: T](index: Int): EList[S] =
-    if index < 0 then this
-    else this match {
-      case Empty() => Empty()
-      case ::(head, tail) =>
-        @tailrec
-        def removeAtHelper(remaining: EList[S], curIndex: Int, traversed: EList[S]): EList[S] =
-          remaining match {
-            case Empty() => this // index is beyond the length of the list
-            case ::(head, tail) =>
-              if curIndex == index then // remove the current element - the head
-                traversed.reverse ++ tail
-              else // move on to the next element in the list
-                removeAtHelper(tail, curIndex + 1, head :: traversed)
-          }
-        removeAtHelper(this, 0, Empty())
-    }
+  def removeAt[S >: T](index: Int): EList[S] = this match {
+    case Empty() => Empty()
+    case _ =>
+      @tailrec
+      def removeAtHelper(remaining: EList[S], curIndex: Int, traversed: EList[S]): EList[S] =
+        remaining match {
+          case Empty() => this // index is beyond the length of the list
+          case head :: tail =>
+            if curIndex == index then // remove the current element - the head
+              traversed.reverse ++ tail
+            else // move on to the next element in the list
+              removeAtHelper(tail, curIndex + 1, head :: traversed)
+        }
+
+      if index < 0 then this
+      else removeAtHelper(this, 0, Empty())
+  }
 
   //--------------------------------------------------------------------------------------
   def map[U](f: T => U): EList[U] = this match {
     case Empty() => Empty()
-    case ::(head, tail) =>
+    case _ =>
       @tailrec
       def mapHelper(remaining: EList[T], acc: EList[U]): EList[U] = remaining match {
-        case Empty()        => acc.reverse
-        case ::(head, tail) => mapHelper(tail, f(head) :: acc)
+        case Empty()      => acc.reverse
+        case head :: tail => mapHelper(tail, f(head) :: acc)
       }
       mapHelper(this, Empty())
   }
 
   //--------------------------------------------------------------------------------------
   def filter(predicate: T => Boolean): EList[T] = this match {
-    case Empty()        => Empty()
-    case ::(head, tail) =>
+    case Empty()  => Empty()
+    case _        =>
       @tailrec
       def filterHelper(remaining: EList[T], acc: EList[T]): EList[T] = remaining match {
-        case Empty()        => acc.reverse
-        case ::(head, tail) => 
+        case Empty()      => acc.reverse
+        case head :: tail =>
           val newAcc = if predicate(head) then head :: acc else acc
           filterHelper(tail, newAcc)
       }
@@ -138,12 +148,12 @@ enum EList[+T] {
   //--------------------------------------------------------------------------------------  
   // Tail recursive, but has poor performance, as it does ++ at each step. Complexity is O(N^2)
   def flatMapInefficient[U](f: T => EList[U]): EList[U] = this match {
-    case Empty()        => Empty()
-    case ::(head, tail) =>
+    case Empty()  => Empty()
+    case _        =>
       @tailrec
       def flatMapHelper(remaining: EList[T], acc: EList[U]): EList[U] = remaining match {
-        case Empty()        => acc
-        case ::(head, tail) => 
+        case Empty()      => acc
+        case head :: tail =>
           flatMapHelper(tail, acc ++ f(head))
       }
       flatMapHelper(this, Empty())  
@@ -165,7 +175,7 @@ enum EList[+T] {
        remaining: EList[T], prev: T, count: Int, 
        acc: EList[(T, Int)]): EList[(T, Int)] = remaining match {
         case Empty()        => (prev, count) :: acc
-        case ::(head, tail) => 
+        case head :: tail =>
           if head == prev then // same element as previous, so increment the count and move on
             rleHelper(tail, head, count + 1, acc)
           else  // new list element
@@ -183,12 +193,12 @@ enum EList[+T] {
   // the helper function. He also used 4 condition checks rather than 3, but the results of 2 of those
   // 4 conditions was the same code. So clearly 3 conditions would have sufficed.
   def duplicateEach(count: Int): EList[T] = this match {
-    case Empty()        => Empty()
-    case ::(head, tail) =>
+    case Empty()  => Empty()
+    case _        =>
       @tailrec
       def duplicateEachHelper(remaining: EList[T], times: Int, acc: EList[T]): EList[T] = remaining match {
         case Empty() => acc.reverse
-        case ::(head, tail) =>
+        case head :: tail =>
           if times == count then  // move on to the next element in the list
             duplicateEachHelper(tail, 0, acc)
           else
@@ -214,19 +224,14 @@ enum EList[+T] {
    */
   def rotate(k: Int): EList[T] = this match {
     case Empty() => Empty()
-    case ::(head, tail) =>
+    case _ =>
       @tailrec
       def rotateHelper(remaining: EList[T], rotationsLeft: Int, right: EList[T]): EList[T] =
-        remaining match {
-          case Empty() => 
-            if rotationsLeft == 0 then this // k was an exact multiple of the length of the list
-            else // now rotationsLeft == k mod (length of list) 
-              rotateHelper(this, rotationsLeft, Empty()) 
-          case ::(head, tail) =>
-            if rotationsLeft == 0 then 
-              remaining ++ right.reverse
-            else 
-              rotateHelper(tail, rotationsLeft - 1, head :: right)
+        (remaining, rotationsLeft) match {
+          case (Empty(), 0)       => this // k was an exact multiple of the length of the list
+          case (Empty(), n)       => rotateHelper(this, n, Empty()) // rotationsLeft == k mod (length of list)
+          case (_, 0)             => remaining ++ right.reverse
+          case (head :: tail, n)  => rotateHelper(tail, n - 1, head :: right)
         }
       if k <= 0 then this
       else rotateHelper(this, k, Empty())  
@@ -237,8 +242,8 @@ enum EList[+T] {
   // k can be larger than the length of the list
   // Complexity is O(N * K)
   def randomSample(k: Int): EList[T] = this match {
-    case Empty()        => Empty()
-    case ::(head, tail) =>
+    case Empty() => Empty()
+    case _ =>
       val maxIndex = this.length
       val random = new Random(System.currentTimeMillis())
       
@@ -496,18 +501,18 @@ enum EList[+T] {
   //--------------------------------------------------------------------------------------
   // FOLDS
   @tailrec
-  final def foldLeft[B](empty: B, f: (T, B) => B): B = this match {
-    case Empty()        => empty
-    case ::(head, tail) => tail.foldLeft(f(head, empty), f)
+  final def foldLeft[B](empty: B)(f: (T, B) => B): B = this match {
+    case Empty()      => empty
+    case head :: tail => tail.foldLeft(f(head, empty))(f)
   }
 
   // types:
   // head:      T
   // f:         B
   // foldRight: B
-  def foldRight[B](empty: B, f: (T, B) => B): B = this match {
-    case Empty()        => empty
-    case ::(head, tail) => f(head, tail.foldRight(empty, f))
+  def foldRight[B](empty: B)(f: (T, B) => B): B = this match {
+    case Empty()      => empty
+    case head :: tail => f(head, tail.foldRight(empty)(f))
   }
 
 } // EList
@@ -529,15 +534,15 @@ object EList {
   // [[1,2,3],[4,5],[6],[7,8,9]]
   def flatten[T](nested: EList[EList[T]]): EList[T] = nested match {
     case Empty() => Empty()
-    case ::(head, tail) =>
+    case _ =>
       @tailrec
       def flattenHelper(remaining: EList[EList[T]], acc: EList[T]): EList[T] = remaining match {
         case Empty() => acc.reverse // e.g. [1,2,3]
-        case ::(head, tail) => // head: EList[T] e.g. [1,2,3]
+        case head :: tail => // head: EList[T] e.g. [1,2,3]
           @tailrec // add elements from the nested list to the accumulator
           def helper2(pending: EList[T], accum: EList[T]): EList[T] = pending match {
             case Empty() => accum
-            case ::(head, tail) => helper2(tail, head :: accum)
+            case head :: tail => helper2(tail, head :: accum)
           }
           val newAcc = helper2(head, acc)
           flattenHelper(tail, newAcc)
@@ -603,10 +608,17 @@ object ListProblemsTest extends App {
     // println(aList(5)) // NoSuchElement exception
 
     // test length
-    println(bList.length) // 3
-    println(empty.length) // 0
+    println("\nTest length")
+    println(bList.length)     // 3
+    println(bList.lengthSR)   // 3
+    println(bList.lengthFold) // 3
+
+    println(empty.length)     // 0
+    println(empty.lengthSR)   // 0
+    println(empty.lengthFold) // 0
 
     // test reverse
+    println("\nTest reverse")
     println(aList.reverse) // [10, 9, 8, 7]
     println(empty.reverse) // []
 
@@ -761,7 +773,7 @@ object ListProblemsTest extends App {
 
   //------------------------------------------------------
 
-  // testEasyProblems()
+  testEasyProblems()
   // testMediumDifficultyProblems()
-  testDifficultProblems()
+  // testDifficultProblems()
 }
